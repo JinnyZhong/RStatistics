@@ -1,0 +1,511 @@
+---
+title: "BAX442-HW3"
+author: "Xingyi (Stella) Wang, Jinying (Jinny) Zhong, and Xinyi (Alice) Shen"
+date: "2023-02-06"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    theme: lumen
+---
+
+# Non constant variance
+## 1. Fit a regression model Lab ∼ Field. Check for non-constant variance.        
+```{r}
+library(faraway)
+pipelinedata <- faraway::pipeline
+
+model1 <- lm(data = pipelinedata, Lab ~ Field)
+resids1 <- resid(model1)
+plot(pipelinedata$Field, resids1, ylab = "Residuals", xlab = "Field", main = "Residual plot against `Field`")
+abline(h = 0)
+```
+
+The plot of residual against predictor `Field` shows that the variance is not constant. The residuals display a fan-shape as `Field` increases. There's problem of heteroskedasticity.          
+
+
+## 2. We wish to use transformation to account for the non-constant variance. Find transformations on Lab and/or Field so that in the transformed scale the relationship is approximately linear with constant variance. You may restrict your choice of transformation to square root, log and inverse. Can you use gg plot to advise which method to use.
+
+$Lab ∼ \sqrt{Field}$:             
+```{r}
+library(ggplot2)
+model1_1 <- lm(data = pipelinedata, Lab ~ sqrt(Field))
+resids1_1 <- resid(model1_1)
+
+plotdata = data.frame('Residuals' = resids1_1, 'Predictor' = pipelinedata$Field)
+ggplot(plotdata, aes(y=resids1_1,x=pipelinedata$Field)) + 
+  geom_point(col = "gold") + 
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", size=1) + 
+  labs(title="Residual plot against sqrt `Field`",
+        x = expression(sqrt("Field")), y = "Residuals")
+```
+
+$Lab ∼ \log{Field}$:             
+```{r}
+model1_2 <- lm(data = pipelinedata, Lab ~ log(Field))
+resids1_2 <- resid(model1_2)
+
+plotdata = data.frame('Residuals' = resids1_2, 'Predictor' = pipelinedata$Field)
+ggplot(plotdata, aes(y=Residuals,x=Predictor)) + 
+  geom_point(col = "skyblue") + 
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", size=1) + 
+  labs(title="Residual plot against log `Field`",
+        x = expression(log("Field")), y = "Residuals")
+```
+
+$Lab ∼ \frac{1}{Field}$:             
+```{r}
+Field_inv <- 1/pipelinedata$Field
+model1_3 <- lm(data = pipelinedata, Lab ~ Field_inv)
+resids1_3 <- resid(model1_3)
+
+plotdata = data.frame('Residuals' = resids1_3, 'Predictor' = Field_inv)
+ggplot(plotdata, aes(y=Residuals,x=Predictor)) + 
+  geom_point(col = "violet") + 
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey", size=1) + 
+  labs(title="Residual plot against inverse `Field`",
+        x = expression(frac(1,Field)), y = "Residuals")
+```
+
+
+From the three new residual plots, the inverse transformation still displays a clear pattern between residuals and the predictor, whereas sqrt and log transformation do better in expanding variance of residuals when predictor values are in the smaller range (left). The log transformation did slightly better in eliminating the pattern of residuals. Log transformation is advised to use in this case.               
+
+
+
+
+# Box Cox Transformation           
+
+```{r }
+data("ozone", package = "faraway")
+library(MASS)
+
+summary(ozone.reg <- lm(O3 ~ temp + humidity + ibh, data=ozone))
+par(mfrow=c(2,2))
+plot(ozone.reg)
+
+bc_q2 <- boxcox(O3 ~ temp + humidity + ibh, data=ozone)
+lambda_optimal_q2 <- bc_q2$x[which.max(bc_q2$y)]
+lambda_optimal_q2
+#ozone$O3 <- BoxCox(ozone$O3, lambda_optimal_q2)
+
+BCTransform <- function(y, lambda=0) {
+    if (lambda == 0L) { log(y) }
+    else { (y^lambda - 1) / lambda }}
+
+hist(ozone$O3, breaks = 12); rug(ozone$O3)
+ozone$O3.bc <- BCTransform(ozone$O3, lambda_optimal_q2)
+hist(ozone$O3.bc, breaks=12); rug(ozone$O3.bc)
+hist(log(ozone$O3.bc), breaks=12); rug(ozone$O3.bc)
+
+summary(ozone.bc <- lm(O3.bc ~ temp + humidity + ibh, data=ozone))
+par(mfrow=c(2,2))
+plot(ozone.bc)
+
+```
+
+------                 
+
+# Feature Selection Methods 
+
+## Question 3.1 Read this data into a R dataframe, and plot them using a scatterplot matrix (pairs) and using gg plot. Describe the dataset. Comment on the correlations between predictors. Based on the pair- wise plot or ggplot can we say any of the predictors are more important.
+
+Based on the pairwise plot, we can see that there are several variables are highly correlated with each other. So I combined with the result from correlation matrix, developed several ggplot to look at each.
+
+medv~1stat: \
+In the lstat range of 10 to 30, it seems that linear model is a good fit, but overall it's non-linear. As the lower status of the population decreases, the median value of owner-occupied homes in $1000s will increase.\
+
+log(crim)~log(age):\       
+If there's older homes/units, there will be more crimes. This relationship is clearer in log-log form.\
+
+log(crim)~log(dis):\       
+If the distance is more closer to the employment centers, there will be more crimes. This relationship looks more clearly in log-log form.\
+
+log(crim)~log(rad):         
+If index of accessibility to radial highways is is higher, there will be more crimes. This relationship looks more clearly in log-log form.\
+
+log(crim)~log(tax):          
+If the tax rate is higher, there will be more crimes. This relationship looks more clearly in log-log form.\
+
+Although we can see there are correlations existing in different pairs of variables, it's hard for us to make a statement of which variables are more important. Since we haven't have a study questions to look at. This may need further steps of model selection to decide.            
+
+
+```{r}
+data("Boston", package = "ISLR2")
+head(Boston)
+
+pairs(Boston)
+cor(Boston)
+
+ggplot(Boston, aes(y=medv, x=lstat)) + geom_point()
+#The linear model appears to be a pretty good fit to the data in the lstat range of 10 - 25. However, the overall relationship between median home value and the % of low socioeconomic status individuals in the neighbourhood appears to be overall non-linear.
+
+ggplot(Boston, aes(y=log(crim), x=log(age))) + geom_point() # Older homes, more crime
+
+ggplot(Boston, aes(y=crim, x=dis)) + geom_point() ## Closer to work-area, more crime
+ggplot(Boston, aes(y=log(crim), x=log(dis))) + geom_point()
+
+ggplot(Boston, aes(y=log(crim), x=log(rad))) + geom_point()  #Higher index of accessibility to radial highways, more crime
+
+ggplot(Boston, aes(y=log(crim), x=log(tax))) + geom_point() # Higher tax rate, more crime
+
+```
+
+## Question 3.2 Evaluate the coefficients using summary(), and summarize what you have learned. What are the significance of p values?
+
+According to the Global F-test, we get a p-value < 0.05. So at the significance level of 5%, we can reject the null hypothesis and conclude that there at least exists one coefficient is statistically significant in this full model. R^2=0.4493 , which implies that this model explains 44.93 of variation in Y.\
+
+Additionally, we separated them into positive and negative coefficients. "zn","rm","lstat" and "rad" have a positive correlation with medv. Rest of the coefficients have negative correlation with medv.                
+
+
+```{r}
+boston_reg_full <- lm(crim ~ ., data = Boston)
+summary(boston_reg_full)
+
+names(which(coef(boston_reg_full) > 0))
+names(which(coef(boston_reg_full) < 0))
+```
+
+
+## Question 3.3 Comment on the interpretation of the coefficients of the predictors. Which predictors are more important ? Can we say about the importance of predictors from the coefficient values ? (Assume you dont know about feature selection methods for this sub question)            
+
+Looking at those coefficients, we have overall 4 statistically significant variables in the full model, at a significance level of 5%. They are indus, dis, rad and medv, and we can identify them as important predictors here. However, p-value can change if we add more observations into our data set. Alpha(significance level) will change our decisions on finding statistically significant variables. If we get a lower the p-vlaue, then we have more confidence to reject the null hypothesis at a specific significance level, and conclude that this variable is statistically significant in the model that can help with explaining the variation in crime rate.        
+
+However, we can NOT say about the importance of predictors from the coefficient VALUE. Coefficient value can help with interpreting the correlation with x and y, when we hold other variables constant. It can not be a criteria of being important. Additionally, it involves with x variables scaling problem.        
+
+
+## Question 3.4  Perform feature selection using the following methods by splitting the data set by random splitting into into 2 parts - 80 % of the dataset as training data set and 20 % of the test set. Compare the performance of the ’reduced’ models on the test dataset.          
+
+Compared the adjusted_R^2 of the "reduced models on the test dataset, results are  listed below:\
+
+- Forward Stepwise with p-value threshold of 0.1: adjusted_R^2 = 0.6797\
+- Backward Stepwise with p-value threshold of 0.1: adjusted_R^2 = 0.5701 \
+- Forward, BIC: adjusted_R^2 = 0.6841 \
+- Forward, AIC: adjusted_R^2 = 0.6875\
+- Forward, Cp: adjusted_R^2 = 0.6875\          
+
+If we stick with the full/original model with all 12 variables and test in the test dataset, we will get an adjusted_R^2=0.7278. All feauture selection methods we tested will provide us a higher adjusted R^2 compared to the original one. The highest and lowest among all these methods, are "Forwar, AIC and Cp" and "Backward Stepwise with p-value threshold of 0.1". As professor mentioned in class, stepwise with p-value threshold may not be a good choice, since it depends on the p-value. That might be the reason that we select a relatively high p-value which leads to the lower adjusted R^2 among all five methods. Forward with AIC and Cp provides a similar model which perform better tha the BIC method in the test dataset.
+
+Overall, from these results, we could see that different criteria/methods will bring us to different feature selections, that directly affect on performance on test dataset. When we need to implement the model selection, we should consider our study questions and goals; then, based on the logic of selection procedure, choose the optimal one to apply.              
+
+```{r}
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(Boston), replace=TRUE, prob=c(0.8,0.2))
+train  <- Boston[sample, ]
+test   <- Boston[!sample, ]
+library(leaps)
+library(MASS)
+library(olsrr)
+
+full.train <- lm(crim~., data = train)
+full.test <- lm(crim~., data= test)
+
+#Forward Stepwise with p-value threshold of 0.1
+fwd <- ols_step_forward_p(full.train, penter = 0.10, details = FALSE) 
+fwd
+predict.fwd.p <- lm(crim~rad+lstat+medv+ptratio, data = test)
+summary(predict.fwd.p) #0.6797 
+
+#Backward Stepwise with p-value threshold of 0.1
+bwd <- ols_step_backward_p(full.train, prem = 0.10, details = FALSE)
+bwd
+predict.bwd.p <- lm(crim~age+tax+chas+indus+rm+lstat, data = test)
+summary(predict.bwd.p) #0.5701 
+
+# Forward, BIC
+boston.fwd=regsubsets(crim~., data = train, nvmax=12, method="forward")
+print(summary(boston.fwd))
+boston.fwd.summary <- summary(boston.fwd)
+#names(boston.fwd.summary)
+which.min(boston.fwd.summary$bic)#2
+coef(boston.fwd,2)
+predict.fwd.bic <- lm(crim~rad+lstat, data = test)
+summary(predict.fwd.bic) # 0.6841  
+
+# Forward, AIC
+fwd.aic<- stepAIC(lm(crim~., data = train), direction = 'forward', trace = FALSE)
+fwd.aic # 12
+predict.fwd.aic <- lm(crim~., data = test)
+summary(predict.fwd.aic) # 0.6875 
+
+#Forward, Cp
+boston.fwd.summary
+boston.fwd.summary$cp #look at the last three
+# 9.028222(10)  11.003267(12)  13.000000(12)
+coef(boston.fwd,12) # 12+1=13=Cp
+predict.fwd.cp <- lm(crim~., data=test)
+summary(predict.fwd.cp) # 0.6875 
+
+```
+
+
+## Question 3.5 Summarize what you have learned from about the various feature selection procedures. Can you comment why one method selects some features over others ?            
+Drawback of testing-based procedures, like forward and backward stepwise, are: 1. Since we add or drop variables one at the time, we may possible to miss the "optimal" model; 2. there is no direct link to the final objectives of prediction or explanation; 3. sometimes oversimplifying the model. Usually, forward selection is better than backwards, since starting with a full model can be expensive or hard to fit. The adverse process of these two will give different model features. More so, choosing different levels of threshold can influence feature selection results as well.        
+$~$         
+Based on the second drawback we can apply different criteria. RSS, R2 and adjR2 are useful in explanation of the observed data(training error). AIC, BIC, and Cp are better used when we want to predict on the new data. This is the major reason that one method selects some features over others. To be more specific, AIC can prevent overfitting, and also tries to approx out of sample deviance. BIC then is trying to get at the "truth", since its section process is based on a given family of models. It also can prevent the danger of underfitting.        
+
+------                   
+
+# Cross Validation           
+
+## 1. Sample X and construct Y           
+```{r}
+# Load the boot library
+library(boot)
+
+n <- 10000 
+# sample vector X, uniform distribution
+X <- runif(n, 0, 1)
+error <- rnorm(n, 0, 0.5) #standard normal distribution
+# construct Y
+Y <- 3*X^5 + 2*X^2 + error
+```
+
+## 2. Split the 10000 points into a 80% training and 20% test split        
+```{r}
+set.seed(888)
+test <- sample(1:10000, 0.2 * n)
+training <- data.frame(X = X[-test], Y = Y[-test])
+testing <- data.frame(X = X[test], Y = Y[test])
+```
+
+## 3. Split the training set into 5 parts and use the five folds to choose the optimal d. Loss function is the MSE error           
+```{r}
+# 5 folds
+folds <- split(training, as.factor(rep(1:5,1)))
+d_mse <- c()
+# for each d, do 5-folds cross validation
+for (d in 1:10){
+  i_mse <- c()
+  for (i in 1:5){
+     testset <- folds[[i]] # 1600 rows
+     trainset <- do.call(rbind, folds[-i]) # 6400 rows
+     model <- lm(Y ~ poly(X, d), data = trainset)
+     pred <- predict(model, newdata = testset)
+     i_mse[i] <- mean((testset$Y - pred)^2)
+  }
+  d_mse[d] <- mean(i_mse)
+}
+
+plot(1:10, d_mse, type = "l", xlab = "d", ylab = "Error")
+print("Based on the plot, d=2 is the turning points after a sharp drop from d=1. The minized MSE could be achieved by choosing any d larger than 3. However, considering the computation costs and the rule of parsimony, we might prefer to pick d=3 or 4 as our optimal d.")
+```
+
+## 4. Use the entire training set for training the models. Compute the performance of the 10 models on the test set. Plot the test MSE as a function of d                 
+```{r}
+# without cross validation
+dd_mse <- c()
+for (d in 1:10){
+  model <- lm(Y ~ poly(X, d), data = training) 
+  pred <- predict(model, newdata = testing)
+  dd_mse[d] <- mean((testing$Y - pred)^2)
+}
+
+plot(1:10, dd_mse, type = "l", xlab = "d", ylab = "Test MSE")
+```
+
+------       
+
+
+# Bias Variance Tradeoff            
+
+## 1. For each of the simulated training dataset you generated, train 10 different models (d ∈ [1, . . . , 10]. ) Store and compute the prediction for x = 500.                 
+
+```{r, generate data}
+n <- 100
+datasets <- list()
+set.seed(812)
+# generate 1000 datasets, each with 100 observations, in a list
+for(i in 1:1000){
+  # sample vector X, uniform distribution
+  X <- runif(n, 0, 1)
+  error <- rnorm(n, 0, 0.5) #standard normal distribution
+  # construct Y
+  Y <- 3*X^5 + 2*X^2 + error
+  
+  newdata <- data.frame(X, Y)
+  datasets[[i]] <- newdata
+}
+
+#---------------------------------------------------
+predictions <- data.frame(t(rep(NA,10)))
+colnames(predictions) <- paste("d =", 1:10)
+
+for (i in 1:1000){
+  training <- datasets[[i]]
+  predicted <- numeric()
+  
+  for(j in 1:10){
+    model <- lm(data = training, Y ~ poly(X, degree = j))
+    newpred <- predict(model, newdata = data.frame(`X` = 1.01))
+    predicted <- c(predicted, newpred)
+  }
+  predictions <- rbind(predictions, predicted)
+}
+
+predictions <- na.omit(predictions)
+```
+
+
+## 2. Calculate the bias and variance of the prediction value. Plot the bias and variance as a function of d.         
+```{r}
+X <- 1.01
+Y_1_01 <- 3*X^5 + 2*X^2
+
+bias_func <- function(Y_preds){
+  E_theta_hat <- mean(Y_preds)
+  theta <- Y_1_01
+  bias <- (E_theta_hat - theta)
+  return(bias)
+}
+
+# calculating bias
+pred_bias <- apply(X = predictions, MARGIN = 2, FUN = bias_func)
+
+# calculating variance
+pred_var <- apply(X = predictions, MARGIN = 2, FUN = var)
+
+
+# plotting
+# using log(bias) scale to make vertical axis make sense
+degrees <- 1:10
+plot(degrees, pred_bias^2, col='blue', lwd=2, type = "l", main = "Plot of bias^2 in Y_hat
+as a function of d") 
+
+  
+plot(degrees, pred_var, col='red', lwd=2, type = "l", main = "Plot of variances in Y_hat
+as a function of d")
+
+pred_bias^2
+pred_var
+```
+
+
+## 3. (Bonus 5 points) Consider the two cases below
+
+### (a) Plot happens to bias and variance if we instead sample from Xi ∈ U[0, 10]       
+```{r, new dist}
+n <- 100
+datasets_a <- list()
+set.seed(812)
+# generate 1000 datasets_a, each with 100 observations, in a list
+for(i in 1:1000){
+  # sample vector X, uniform distribution
+  X <- runif(n, 0, 10) # new distribution!!
+  error <- rnorm(n, 0, 0.5) #standard normal distribution
+  # construct Y
+  Y <- 3*X^5 + 2*X^2 + error
+  
+  newdata <- data.frame(X, Y)
+  datasets_a[[i]] <- newdata
+}
+
+predictions <- data.frame(t(rep(NA,10)))
+colnames(predictions) <- paste("d =", 1:10)
+
+for (i in 1:1000){
+  training <- datasets_a[[i]]
+  predicted <- numeric()
+  
+  for(j in 1:10){
+    model <- lm(data = training, Y ~ poly(X, degree = j))
+    newpred <- predict(model, newdata = data.frame(`X` = 1.01))
+    predicted <- c(predicted, newpred)
+  }
+  predictions <- rbind(predictions, predicted)
+}
+
+predictions <- na.omit(predictions)
+
+X <- 1.01
+Y_1_01 <- 3*X^5 + 2*X^2
+
+
+bias_func <- function(Y_preds){
+  E_theta_hat <- mean(Y_preds)
+  theta <- Y_1_01
+  bias <- (E_theta_hat - theta)
+  return(bias)
+}
+
+# calculating bias
+pred_bias <- apply(X = predictions, MARGIN = 2, FUN = bias_func)
+
+# calculating variance
+pred_var <- apply(X = predictions, MARGIN = 2, FUN = var)
+
+
+# plotting
+# using log(bias) scale to make vertical axis make sense
+degrees <- 1:10
+plot(degrees, pred_bias^2, col='blue', lwd=2, type = "l", main = "Case a: Plot of bias^2 in Y_hat
+as a function of d (Xi ~ U[0, 10])") 
+
+  
+plot(degrees, pred_var, col='red', lwd=2, type = "l", main = "Case a: Plot of variances in Y_hat
+as a function of d (Xi ~ U[0, 10])")
+
+pred_bias^2
+pred_var
+```
+
+
+
+
+### (b) Plot what happens to bias and variance if we instead use test point x = -0.5 ?
+
+```{r, new x_pred}
+predictions <- data.frame(t(rep(NA,10)))
+colnames(predictions) <- paste("d =", 1:10)
+
+for (i in 1:1000){
+  training <- datasets[[i]] # using same old dataset
+  predicted <- numeric()
+  
+  for(j in 1:10){
+    model <- lm(data = training, Y ~ poly(X, degree = j))
+    newpred <- predict(model, newdata = data.frame(`X` = -0.5))
+    predicted <- c(predicted, newpred)
+  }
+  predictions <- rbind(predictions, predicted)
+}
+
+predictions <- na.omit(predictions)
+
+# out-of-bound new x:
+X <- -0.5
+Y_oob <- 3*X^5 + 2*X^2
+
+bias_func <- function(Y_preds){
+  E_theta_hat <- mean(Y_preds)
+  theta <- Y_oob
+  bias <- (E_theta_hat - theta)
+  return(bias)
+}
+
+# calculating bias
+pred_bias <- apply(X = predictions, MARGIN = 2, FUN = bias_func)
+
+# calculating variance
+pred_var <- apply(X = predictions, MARGIN = 2, FUN = var)
+
+
+# plotting
+# using log(bias) scale to make vertical axis make sense
+degrees <- 1:10
+plot(degrees, pred_bias^2, col='blue', lwd=2, type = "l", main = "Case b: Plot of bias^2 in Y_hat
+as a function of d (given X = -0.5)") 
+
+  
+plot(degrees, pred_var, col='red', lwd=2, type = "l", main = "Case b: Plot of variances in Y_hat
+as a function of d (given X = -0.5)")
+pred_bias^2
+pred_var
+```
+
+### Question to above plots: Can you explain why do the plots look like above ? What are the implications ? Can we mitigate any of the issues ?         
+
+* For the first case, as Xi ∈ U[0, 10] instead of U[0,1], variance of Xi increases, the predicted Y as a function of Xi would also have larger variances, making the prediction bias^2 larger (max 1.925 -->  max 1.3e+09) as well as variance (2.993 --> 5.1e+7). These are not really an issue but a result of the defined approach of OLS. The path of variance reversed (originally increasing with d, but in case a decreasing with d). Reason might be that in original case, x=1.01 is a out of bound (X~U[0,1]) new observation, so prediction becomes further off from true y value as we train poly(d) with X~U[0,1] observations. Whereas in case a, X=1.01 lies safely in-bound of U[0,10], the previous model is trained by similar data points -- as long as correct functional form is found, that is, degree approaches 5, the variance of prediction would decrease with d.            
+
+
+* For the second case, as x = -0.5, pretty out of bound of the assumption that Xi ∈ U[0,1], the model is predicting a case that lies in the range it wasn't trained on. Therefore, the bias^2 increase (max 1.925 --> 1.7e+04) as well as variance (5.1e+07 --> 7.8e+08) due to unpredictability. This issue could be mitigated by including some x_i's < 0 in the 1000 simulated training datasets, for instance,  Xi ∈ U[-1, 1]. Then the bias and variance of predicted new data would not increase that much (might still increase a bit as the range of the uniformly distributed Xi's has widened). Moreover, the path of bias^2 with d got reversed compared to original plot. The reason was also that prediction for an out-of-bound new X = -0.5 becomes further off from true y value as d increases given we train poly(d) with X~U[0,1] observations.                               
